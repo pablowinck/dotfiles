@@ -50,16 +50,42 @@ function Install-WingetPackage {
     $output = winget install --id $Id -e --accept-package-agreements --accept-source-agreements --disable-interactivity --silent 2>&1 | Out-String
     Write-Host $output
     if ($LASTEXITCODE -ne 0 -or $output -match '0x8a15000f|Nenhum pacote foi encontrado|No package found') {
-        Write-Host "Tentando 'winget source reset --force' e re-instalar" -ForegroundColor Yellow
-        winget source reset --force 2>&1 | Out-Null
-        winget source update --disable-interactivity 2>&1 | Out-Null
-        $output = winget install --id $Id -e --accept-package-agreements --accept-source-agreements --disable-interactivity --silent 2>&1 | Out-String
-        Write-Host $output
-        if ($LASTEXITCODE -ne 0 -or $output -match '0x8a15000f|Nenhum pacote foi encontrado|No package found') {
-            Write-Fail "Falha ao instalar $Name via winget. Instale manualmente e re-execute o script."
-        }
+        Write-Host "winget falhou; vai tentar download direto do instalador" -ForegroundColor Yellow
+        return $false
     }
-    Write-Ok "$Name instalado"
+    Write-Ok "$Name instalado via winget"
+    return $true
+}
+
+function Install-FromUrl {
+    param(
+        [string]$Url,
+        [string]$FileName,
+        [string]$Args,
+        [string]$Name
+    )
+    $installer = Join-Path $env:TEMP $FileName
+    Write-Info "Baixando $Name de $Url"
+    try {
+        $progressPreference = 'silentlyContinue'
+        Invoke-WebRequest -Uri $Url -OutFile $installer -UseBasicParsing
+    } catch {
+        Write-Fail "Falha no download de $Name`: $($_.Exception.Message)"
+    }
+    Write-Info "Executando installer (silencioso) de $Name"
+    try {
+        if ($Args) {
+            $proc = Start-Process -FilePath $installer -ArgumentList $Args -Wait -PassThru
+        } else {
+            $proc = Start-Process -FilePath $installer -Wait -PassThru
+        }
+        if ($proc.ExitCode -ne 0) {
+            Write-Fail "$Name installer retornou exit code $($proc.ExitCode)"
+        }
+    } finally {
+        Remove-Item $installer -Force -ErrorAction SilentlyContinue
+    }
+    Write-Ok "$Name instalado via download direto"
 }
 
 # 3. WSL com Ubuntu-26.04
@@ -77,9 +103,17 @@ Write-Ok "Distro Ubuntu-26.04 encontrada"
 Write-Info "Verificando Postman Desktop"
 if (Test-WingetInstalled "Postman.Postman") {
     Write-Skip "Postman ja instalado"
+} elseif (Test-Path "$env:LOCALAPPDATA\Postman\Postman.exe") {
+    Write-Skip "Postman ja instalado (detectado em LOCALAPPDATA)"
 } else {
     Write-Info "Instalando Postman Desktop via winget"
-    Install-WingetPackage "Postman.Postman" "Postman"
+    if (-not (Install-WingetPackage "Postman.Postman" "Postman")) {
+        Install-FromUrl `
+            -Url "https://dl.pstmn.io/download/latest/win64" `
+            -FileName "Postman-Setup.exe" `
+            -Args "/S" `
+            -Name "Postman"
+    }
 }
 
 # 5. Docker Desktop
@@ -87,9 +121,18 @@ Write-Info "Verificando Docker Desktop"
 if (Test-WingetInstalled "Docker.DockerDesktop") {
     Write-Skip "Docker Desktop ja instalado"
     Read-Host "Confirme que Docker Desktop esta rodando com WSL Integration para Ubuntu-26.04 habilitado, e pressione Enter"
+} elseif (Test-Path "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe") {
+    Write-Skip "Docker Desktop ja instalado (detectado em Program Files)"
+    Read-Host "Confirme que Docker Desktop esta rodando com WSL Integration para Ubuntu-26.04 habilitado, e pressione Enter"
 } else {
     Write-Info "Instalando Docker Desktop via winget"
-    Install-WingetPackage "Docker.DockerDesktop" "Docker Desktop"
+    if (-not (Install-WingetPackage "Docker.DockerDesktop" "Docker Desktop")) {
+        Install-FromUrl `
+            -Url "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" `
+            -FileName "Docker-Desktop-Installer.exe" `
+            -Args "install --quiet --accept-license" `
+            -Name "Docker Desktop"
+    }
     Write-Info "Abra o Docker Desktop manualmente uma vez para inicializar o daemon."
     Write-Info "Depois habilite WSL Integration em: Settings, Resources, WSL Integration, Ubuntu-26.04 = ON"
     Read-Host "Pressione Enter quando o Docker Desktop estiver rodando e a integracao WSL habilitada"
