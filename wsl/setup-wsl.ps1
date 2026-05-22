@@ -44,6 +44,23 @@ function Test-WingetInstalled {
     return ($LASTEXITCODE -eq 0 -and $output -match [regex]::Escape($Id))
 }
 
+function Install-WingetPackage {
+    param([string]$Id, [string]$Name)
+    $output = winget install --id $Id -e --accept-package-agreements --accept-source-agreements --disable-interactivity --silent 2>&1 | Out-String
+    Write-Host $output
+    if ($LASTEXITCODE -ne 0 -or $output -match '0x8a15000f|Nenhum pacote foi encontrado|No package found') {
+        Write-Host "Tentando 'winget source reset --force' e re-instalar" -ForegroundColor Yellow
+        winget source reset --force 2>&1 | Out-Null
+        winget source update --accept-source-agreements --disable-interactivity 2>&1 | Out-Null
+        $output = winget install --id $Id -e --accept-package-agreements --accept-source-agreements --disable-interactivity --silent 2>&1 | Out-String
+        Write-Host $output
+        if ($LASTEXITCODE -ne 0 -or $output -match '0x8a15000f|Nenhum pacote foi encontrado|No package found') {
+            Write-Fail "Falha ao instalar $Name via winget. Instale manualmente e re-execute o script."
+        }
+    }
+    Write-Ok "$Name instalado"
+}
+
 # 3. WSL com Ubuntu-26.04
 # wsl.exe imprime em UTF-16 LE por padrao; WSL_UTF8=1 forca UTF-8 para captura limpa
 $env:WSL_UTF8 = "1"
@@ -61,8 +78,7 @@ if (Test-WingetInstalled "Postman.Postman") {
     Write-Skip "Postman ja instalado"
 } else {
     Write-Info "Instalando Postman Desktop via winget"
-    winget install --id Postman.Postman -e --accept-package-agreements --accept-source-agreements --disable-interactivity --silent
-    Write-Ok "Postman instalado"
+    Install-WingetPackage "Postman.Postman" "Postman"
 }
 
 # 5. Docker Desktop
@@ -72,8 +88,7 @@ if (Test-WingetInstalled "Docker.DockerDesktop") {
     Read-Host "Confirme que Docker Desktop esta rodando com WSL Integration para Ubuntu-26.04 habilitado, e pressione Enter"
 } else {
     Write-Info "Instalando Docker Desktop via winget"
-    winget install --id Docker.DockerDesktop -e --accept-package-agreements --accept-source-agreements --disable-interactivity --silent
-    Write-Ok "Docker Desktop instalado"
+    Install-WingetPackage "Docker.DockerDesktop" "Docker Desktop"
     Write-Info "Abra o Docker Desktop manualmente uma vez para inicializar o daemon."
     Write-Info "Depois habilite WSL Integration em: Settings, Resources, WSL Integration, Ubuntu-26.04 = ON"
     Read-Host "Pressione Enter quando o Docker Desktop estiver rodando e a integracao WSL habilitada"
