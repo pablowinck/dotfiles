@@ -43,13 +43,25 @@ if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
 }
 
 function Install-ChocoPackage {
-    param([string]$Name)
-    Write-Info "choco install $Name"
-    choco install $Name -y --no-progress --limit-output
+    param(
+        [string]$Name,
+        [int]$TimeoutSec = 600,
+        [switch]$IgnoreDependencies,
+        [switch]$SoftFail
+    )
+    Write-Info "choco install $Name (timeout ${TimeoutSec}s)"
+    $args = @($Name, "-y", "--no-progress", "--limit-output", "--execution-timeout=$TimeoutSec")
+    if ($IgnoreDependencies) { $args += "--ignore-dependencies" }
+    choco install @args
     if ($LASTEXITCODE -ne 0) {
+        if ($SoftFail) {
+            Write-Skip "Falha ao instalar $Name (exit $LASTEXITCODE) - vai prosseguir"
+            return $false
+        }
         Write-Fail "Falha ao instalar $Name via Chocolatey (exit code $LASTEXITCODE)"
     }
     Write-Ok "$Name instalado (ou ja existente)"
+    return $true
 }
 
 # 3. WSL com Ubuntu-26.04
@@ -64,17 +76,24 @@ if ($wslList -notmatch 'Ubuntu-26\.04') {
 Write-Ok "Distro Ubuntu-26.04 encontrada"
 
 # 4. Postman Desktop
-Install-ChocoPackage "postman"
+Install-ChocoPackage -Name "postman" -TimeoutSec 600
 
-# 5. Docker Desktop
+# 5. Docker Desktop (best-effort - se falhar, segue sem)
 $dockerAlreadyInstalled = (Test-Path "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe")
-Install-ChocoPackage "docker-desktop"
 if ($dockerAlreadyInstalled) {
+    Write-Skip "Docker Desktop ja instalado"
     Read-Host "Confirme que Docker Desktop esta rodando com WSL Integration para Ubuntu-26.04 habilitado, e pressione Enter"
 } else {
-    Write-Info "Abra o Docker Desktop manualmente uma vez para inicializar o daemon."
-    Write-Info "Depois habilite WSL Integration em: Settings, Resources, WSL Integration, Ubuntu-26.04 = ON"
-    Read-Host "Pressione Enter quando o Docker Desktop estiver rodando e a integracao WSL habilitada"
+    $dockerOk = Install-ChocoPackage -Name "docker-desktop" -TimeoutSec 1200 -IgnoreDependencies -SoftFail
+    if ($dockerOk) {
+        Write-Info "Abra o Docker Desktop manualmente uma vez para inicializar o daemon."
+        Write-Info "Depois habilite WSL Integration em: Settings, Resources, WSL Integration, Ubuntu-26.04 = ON"
+        Read-Host "Pressione Enter quando o Docker Desktop estiver rodando e a integracao WSL habilitada"
+    } else {
+        Write-Skip "Docker Desktop nao foi instalado automaticamente."
+        Write-Info "Instale manualmente depois: https://www.docker.com/products/docker-desktop/"
+        Write-Info "WSL setup vai prosseguir normalmente (Docker e opcional no Windows)"
+    }
 }
 
 # 6. Disparar install.sh dentro do WSL
