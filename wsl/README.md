@@ -15,8 +15,14 @@ No PowerShell, como Administrador:
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/pablowinck/dotfiles/main/wsl/setup-wsl.ps1 -OutFile $env:TEMP\setup-wsl.ps1
-& $env:TEMP\setup-wsl.ps1
+powershell -ExecutionPolicy Bypass -File $env:TEMP\setup-wsl.ps1
 ```
+
+> Se preferir habilitar scripts permanentemente (em vez de Bypass a cada execução), rode uma única vez como Administrador:
+> ```powershell
+> Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+> ```
+> Depois você pode chamar `& $env:TEMP\setup-wsl.ps1` direto.
 
 O que acontece:
 
