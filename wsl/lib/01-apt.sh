@@ -15,6 +15,7 @@ PACKAGES=(
   lsb-release
   postgresql-client
   unzip
+  zip
   zsh
   zsh-syntax-highlighting
 )
