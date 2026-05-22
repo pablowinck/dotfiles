@@ -52,6 +52,7 @@ Write-Info "Verificando Docker Desktop"
 $docker = winget list --id Docker.DockerDesktop -e 2>$null
 if ($LASTEXITCODE -eq 0 -and $docker -match 'Docker Desktop') {
     Write-Skip "Docker Desktop já instalado"
+    Read-Host "Confirme que Docker Desktop está rodando com WSL Integration para Ubuntu-26.04 habilitado, e pressione Enter"
 } else {
     Write-Info "Instalando Docker Desktop via winget"
     winget install --id Docker.DockerDesktop -e --accept-package-agreements --accept-source-agreements --silent
@@ -63,8 +64,7 @@ if ($LASTEXITCODE -eq 0 -and $docker -match 'Docker Desktop') {
 
 # 6. Disparar install.sh dentro do WSL
 Write-Info "Executando install.sh dentro do WSL Ubuntu-26.04"
-$installUrl = 'https://raw.githubusercontent.com/pablowinck/dotfiles/main/wsl/install.sh'
-$wslCmd = "set -e; curl -fsSL $installUrl -o /tmp/dotfiles-install.sh && chmod +x /tmp/dotfiles-install.sh; if [ ! -d ~/.dotfiles ]; then git clone https://github.com/pablowinck/dotfiles.git ~/.dotfiles; fi; bash ~/.dotfiles/wsl/install.sh"
+$wslCmd = "set -e; if [ ! -d ~/.dotfiles ]; then git clone https://github.com/pablowinck/dotfiles.git ~/.dotfiles; fi; bash ~/.dotfiles/wsl/install.sh"
 wsl.exe -d Ubuntu-26.04 bash -lc "$wslCmd"
 
 if ($LASTEXITCODE -ne 0) {
