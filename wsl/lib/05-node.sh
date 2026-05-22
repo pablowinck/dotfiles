@@ -22,7 +22,7 @@ if node -v 2>/dev/null | grep -q '^v22\.'; then
   skip "Node $(node -v) já ativo"
 else
   log "instalando Node 22 LTS"
-  nvm install 22 --lts
+  nvm install 22
   nvm alias default 22
   nvm use default
   ok "Node $(node -v) instalado e setado como default"
