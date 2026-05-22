@@ -20,15 +20,17 @@ if ! grep -q '^sdkman_auto_answer=true' "$SDKMAN_DIR/etc/config" 2>/dev/null; th
   log "habilitado sdkman_auto_answer=true"
 fi
 
+# SDKMAN nao e compativel com `set -u` (usa variaveis nao setadas
+# internamente, ex: sdkman-main.sh line 30). Desabilitamos nounset
+# e pipefail por todo o resto do script enquanto manipulamos sdk.
+set +u
+set +o pipefail
+
 log "sourcing $SDKMAN_DIR/bin/sdkman-init.sh"
 # shellcheck source=/dev/null
-set +u
 source "$SDKMAN_DIR/bin/sdkman-init.sh"
-set -u
 
-log "sdk version: $(sdk version 2>&1 | head -3 | tr '\n' ' ')"
-
-current_java="$(sdk current java 2>/dev/null || true)"
+current_java="$(sdk current java 2>/dev/null)"
 log "sdk current java: '$current_java'"
 
 if echo "$current_java" | grep -qE '21\.[0-9]+\.[0-9]+-tem'; then
@@ -37,32 +39,29 @@ if echo "$current_java" | grep -qE '21\.[0-9]+\.[0-9]+-tem'; then
 fi
 
 log "descobrindo versao mais recente de Java 21 Temurin"
-set +o pipefail
-sdk_list="$(sdk list java 2>&1 || true)"
+sdk_list="$(sdk list java 2>&1)"
 JAVA_VERSION="$(echo "$sdk_list" | grep -oE '21\.[0-9]+\.[0-9]+-tem' | sort -V | tail -1)"
-set -o pipefail
 
 if [ -z "$JAVA_VERSION" ]; then
-  log "parsing de 'sdk list java' nao encontrou versao 21.x-tem; tentando fallback"
-  log "amostra do output de 'sdk list java' (primeiras linhas):"
+  log "parsing de 'sdk list java' nao encontrou versao 21.x-tem; usando fallback 21.0.5-tem"
   echo "$sdk_list" | head -30
   JAVA_VERSION="21.0.5-tem"
 fi
 
-log "vai instalar Java $JAVA_VERSION (output completo abaixo)"
+log "vai instalar Java $JAVA_VERSION"
 echo "--- BEGIN sdk install java $JAVA_VERSION ---"
-if ! sdk install java "$JAVA_VERSION" </dev/null; then
-  echo "--- END (failed) ---"
-  fail "sdk install java $JAVA_VERSION falhou (exit code $?)"
+sdk install java "$JAVA_VERSION" </dev/null
+INSTALL_RC=$?
+echo "--- END sdk install java $JAVA_VERSION (exit $INSTALL_RC) ---"
+if [ $INSTALL_RC -ne 0 ]; then
+  fail "sdk install java $JAVA_VERSION falhou (exit $INSTALL_RC)"
 fi
-echo "--- END sdk install java $JAVA_VERSION ---"
 
 log "setando $JAVA_VERSION como default"
-echo "--- BEGIN sdk default java $JAVA_VERSION ---"
-if ! sdk default java "$JAVA_VERSION" </dev/null; then
-  echo "--- END (failed) ---"
-  fail "sdk default java $JAVA_VERSION falhou (exit code $?)"
+sdk default java "$JAVA_VERSION" </dev/null
+DEFAULT_RC=$?
+if [ $DEFAULT_RC -ne 0 ]; then
+  fail "sdk default java $JAVA_VERSION falhou (exit $DEFAULT_RC)"
 fi
-echo "--- END sdk default java $JAVA_VERSION ---"
 
 ok "Java $JAVA_VERSION instalado e setado como default"
