@@ -31,8 +31,12 @@ if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
 Write-Ok "winget disponivel"
 
 # 3. WSL com Ubuntu-26.04
-$wslList = wsl.exe -l -v
+# wsl.exe imprime em UTF-16 LE por padrao; WSL_UTF8=1 forca UTF-8 para captura limpa
+$env:WSL_UTF8 = "1"
+$wslList = (wsl.exe -l -v 2>&1) -join "`n"
 if ($wslList -notmatch 'Ubuntu-26\.04') {
+    Write-Host "Output de 'wsl -l -v' recebido:" -ForegroundColor Yellow
+    Write-Host $wslList
     Write-Fail "Distro Ubuntu-26.04 nao encontrada. Instale primeiro: wsl --install -d Ubuntu-26.04"
 }
 Write-Ok "Distro Ubuntu-26.04 encontrada"
