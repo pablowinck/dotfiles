@@ -30,12 +30,13 @@ if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
 }
 Write-Ok "winget disponivel"
 
-Write-Info "Aceitando termos das sources do winget"
+Write-Info "Inicializando sources do winget (reset + update)"
 try {
-    winget source update --accept-source-agreements --disable-interactivity 2>&1 | Out-Null
+    winget source reset --force 2>&1 | Out-Null
+    winget source update --disable-interactivity 2>&1 | Out-Null
     Write-Ok "Sources do winget OK"
 } catch {
-    Write-Skip "Falha em winget source update (vai prosseguir)"
+    Write-Skip "Falha em winget source reset/update (vai prosseguir)"
 }
 
 function Test-WingetInstalled {
@@ -51,7 +52,7 @@ function Install-WingetPackage {
     if ($LASTEXITCODE -ne 0 -or $output -match '0x8a15000f|Nenhum pacote foi encontrado|No package found') {
         Write-Host "Tentando 'winget source reset --force' e re-instalar" -ForegroundColor Yellow
         winget source reset --force 2>&1 | Out-Null
-        winget source update --accept-source-agreements --disable-interactivity 2>&1 | Out-Null
+        winget source update --disable-interactivity 2>&1 | Out-Null
         $output = winget install --id $Id -e --accept-package-agreements --accept-source-agreements --disable-interactivity --silent 2>&1 | Out-String
         Write-Host $output
         if ($LASTEXITCODE -ne 0 -or $output -match '0x8a15000f|Nenhum pacote foi encontrado|No package found') {
