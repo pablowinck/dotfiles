@@ -20,15 +20,17 @@ if ! grep -q '^sdkman_auto_answer=true' "$SDKMAN_DIR/etc/config" 2>/dev/null; th
   log "habilitado sdkman_auto_answer=true"
 fi
 
-# SDKMAN nao e compativel com `set -u` (usa variaveis nao setadas
-# internamente, ex: sdkman-main.sh line 30). Desabilitamos nounset
-# e pipefail por todo o resto do script enquanto manipulamos sdk.
-set +u
-set +o pipefail
+# SDKMAN nao e compativel com `set -euo pipefail`:
+# - usa $VAR nao-setadas internamente (set -u quebra)
+# - varios pipes internos retornam nao-zero (pipefail quebra)
+# - varios comandos retornam nao-zero em fluxo normal (set -e quebra)
+# Desabilitamos os tres por todo o restante do script.
+set +e +u +o pipefail
 
 log "sourcing $SDKMAN_DIR/bin/sdkman-init.sh"
 # shellcheck source=/dev/null
 source "$SDKMAN_DIR/bin/sdkman-init.sh"
+log "source OK; sdk function disponivel: $(type -t sdk 2>/dev/null || echo nope)"
 
 current_java="$(sdk current java 2>/dev/null)"
 log "sdk current java: '$current_java'"
