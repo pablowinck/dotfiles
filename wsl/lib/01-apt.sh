@@ -14,6 +14,7 @@ PACKAGES=(
   jq
   lsb-release
   postgresql-client
+  tmux
   unzip
   zip
   zsh

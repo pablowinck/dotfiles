@@ -67,6 +67,7 @@ git clone https://github.com/pablowinck/dotfiles.git ~/.dotfiles
 ## O que NÃO está incluso
 
 - Hooks de TTS do Mac (`say -v Luciana` é macOS-only)
+- `clauder` é instalado em `~/.local/bin/clauder` via symlink (`13-configs.sh`); veja [`../claude/CLAUDER.md`](../claude/CLAUDER.md)
 - MCP `agentmemory` (depende de daemon launchd)
 - MCPs `sequential-thinking`, `memory`, `chrome-devtools` (não foram pedidos)
 - `statusline.sh` do Mac (Fase 2)

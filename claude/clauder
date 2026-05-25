@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# clauder — wrapper de Claude Code com auto-retry de socket error via tmux
+# Detecta o erro no TUI e digita "continue" automaticamente.
+# Heurística de "claude está travado": timer no rodapé não avança entre 2 amostras.
+
+set -uo pipefail
+
+readonly CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
+readonly LOG_DIR="$HOME/.claude/retry-logs"
+readonly ERROR_PATTERN='socket connection was closed|Unable to connect to API|ECONNRESET|UND_ERR_SOCKET'
+readonly TIMER_REGEX='\(([0-9]+h )?([0-9]+m )?[0-9]+s\)'
+readonly STUCK_CHECK_DELAY=6
+readonly POLL_INTERVAL=4
+readonly COOLDOWN_AFTER_RETRY=120
+readonly MAX_AUTO_RETRIES=10
+
+mkdir -p "$LOG_DIR"
+session_id="clauder-$$-$(date +%s)"
+event_log="$LOG_DIR/session-$(date +%Y%m%d-%H%M%S).log"
+
+ts() { date '+%Y-%m-%d %H:%M:%S'; }
+log() { echo "[$(ts)] $*" >> "$event_log"; }
+
+cleanup() {
+  tmux kill-session -t "$session_id" 2>/dev/null || true
+  log "session ended"
+}
+trap cleanup EXIT INT TERM
+
+if ! command -v tmux >/dev/null 2>&1; then
+  echo "tmux not installed. Run: brew install tmux" >&2
+  exec "$CLAUDE_BIN" "$@"
+fi
+
+capture() {
+  tmux capture-pane -t "$session_id" -p 2>/dev/null | awk '
+    { lines[NR] = $0 }
+    END {
+      last = 0
+      for (i = NR; i >= 1; i--) {
+        if (lines[i] ~ /[^[:space:]]/) { last = i; break }
+      }
+      start = (last > 20) ? last - 19 : 1
+      for (i = start; i <= last; i++) print lines[i]
+    }
+  ' 2>/dev/null || true
+}
+
+extract_timer() {
+  echo "$1" | grep -oE "$TIMER_REGEX" | tail -1
+}
+
+needs_continue() {
+  echo "$1" | awk '
+    BEGIN { last_error = 0; continue_after_error = 0 }
+    {
+      if ($0 ~ /API Error.*socket connection|Unable to connect to API|UND_ERR_SOCKET|ECONNRESET/) {
+        last_error = NR
+        continue_after_error = 0
+        next
+      }
+      if (last_error > 0 && NR > last_error) {
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+        sub(/^[›>│|][[:space:]]*/, "", line)
+        sub(/[[:space:]]+$/, "", line)
+        if (line == "continue") {
+          continue_after_error = 1
+        }
+      }
+    }
+    END {
+      if (last_error > 0 && !continue_after_error) {
+        print "FIRE"
+      }
+    }
+  '
+}
+
+log "starting session=$session_id with args: $*"
+
+tmux new-session -d -s "$session_id" -x 200 -y 50 "$CLAUDE_BIN $*"
+
+monitor_loop() {
+  local retries=0 last_retry_ts=0
+  while tmux has-session -t "$session_id" 2>/dev/null; do
+    sleep "$POLL_INTERVAL"
+
+    pane1=$(capture)
+    [[ -z "$pane1" ]] && continue
+
+    if [[ "$(needs_continue "$pane1")" != "FIRE" ]]; then
+      continue
+    fi
+
+    now=$(date +%s)
+    if (( now - last_retry_ts < COOLDOWN_AFTER_RETRY )); then
+      continue
+    fi
+
+    timer1=$(extract_timer "$pane1")
+    sleep "$STUCK_CHECK_DELAY"
+    pane2=$(capture)
+    [[ -z "$pane2" ]] && continue
+    timer2=$(extract_timer "$pane2")
+
+    if [[ -z "$timer1" && -n "$timer2" ]]; then
+      log "timer appeared ('' → $timer2) — claude started new work, skipping"
+      continue
+    fi
+
+    if [[ -n "$timer1" && -n "$timer2" && "$timer1" != "$timer2" ]]; then
+      log "timer moved ($timer1 → $timer2) — claude still processing, skipping"
+      continue
+    fi
+
+    if [[ "$(needs_continue "$pane2")" != "FIRE" ]]; then
+      log "no pending error needing continue on 2nd sample, skipping"
+      continue
+    fi
+
+    if (( retries >= MAX_AUTO_RETRIES )); then
+      log "max auto-retries ($MAX_AUTO_RETRIES) reached, stopping monitor"
+      return
+    fi
+
+    retries=$((retries + 1))
+    last_retry_ts=$(date +%s)
+    log "claude stuck (timer='$timer1' = '$timer2') with socket error — auto-retry $retries/$MAX_AUTO_RETRIES"
+    tmux send-keys -t "$session_id" "continue" Enter
+  done
+}
+
+monitor_loop &
+monitor_pid=$!
+
+tmux attach-session -t "$session_id"
+
+kill "$monitor_pid" 2>/dev/null || true
+wait "$monitor_pid" 2>/dev/null || true

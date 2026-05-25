@@ -2,9 +2,9 @@
 set -euo pipefail
 source "$(dirname "$0")/00-prelude.sh"
 
-step "13-configs: symlinks de claude/* e zsh/.zshrc"
+step "13-configs: symlinks de claude/*, tmux, clauder e zsh/.zshrc"
 
-mkdir -p "$HOME/.claude/commands" "$HOME/.claude/skills"
+mkdir -p "$HOME/.claude/commands" "$HOME/.claude/skills" "$HOME/.local/bin"
 
 link_if_needed() {
   local src="$1"
@@ -36,6 +36,12 @@ for entry in "$DOTFILES_DIR"/claude/skills/*; do
   [ -e "$entry" ] || continue
   link_if_needed "$entry" "$HOME/.claude/skills/$(basename "$entry")"
 done
+
+# clauder (wrapper de Claude Code com auto-retry)
+link_if_needed "$DOTFILES_DIR/claude/clauder" "$HOME/.local/bin/clauder"
+
+# tmux (necessário pro clauder)
+link_if_needed "$DOTFILES_DIR/tmux/.tmux.conf" "$HOME/.tmux.conf"
 
 # zsh
 link_if_needed "$DOTFILES_DIR/zsh/.zshrc" "$HOME/.zshrc"
